@@ -21,3 +21,8 @@ resource "azurerm_resource_group" "rg" {
   name     = "rg-hello-terraform-${random_uuid.uuid.result}"
   location = var.location
 }
+
+resource "azurerm_resource_group" "tfrg" {
+  name     = "rg-test-terraform-${random_uuid.uuid.result}"
+  location = var.location
+}

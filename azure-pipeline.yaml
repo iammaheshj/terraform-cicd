@@ -13,7 +13,8 @@ variables:
   azureLocation: 'westeurope'
   # Terraform settings
   terraformWorkingDirectory: '$(System.DefaultWorkingDirectory)'
-  terraformVersion: '0.15.3'
+  terraformVersion: '0.15.3'  
+  TERRAFORM_PLAN_HAS_CHANGES: 'false'
 
 stages:
   - stage: TerraformStaticCodeAnalysis
@@ -25,7 +26,9 @@ stages:
         vmImage: ubuntu-latest
       steps:
       # Step 1: run the Checkov Static Code Analysis
-      - bash: $(terraformWorkingDirectory)/checkov.sh $(terraformWorkingDirectory)
+      - bash: |
+          chmod u+x $(terraformWorkingDirectory)/checkov.sh
+          $(terraformWorkingDirectory)/checkov.sh $(terraformWorkingDirectory)
         displayName: Checkov Static Code Analysis
       
   - stage: TerraformContinuousIntegration
@@ -79,7 +82,7 @@ stages:
           command: plan
           workingDirectory: $(terraformWorkingDirectory)
           environmentServiceNameAzureRM: $(serviceConnection)
-          commandOptions: '-var location=$(azureLocation) -out tfplan  -detailed-exitcode'  
+          commandOptions: '-out=tfplan -detailed-exitcode'  
           publishPlanResults: 'terraplan'
       
       - script: |
@@ -108,7 +111,6 @@ stages:
           publishLocation: 'Container'
 
     - job: waitForValidationThenApplyJob
-      condition: and(succeeded(), eq(variables['TERRAFORM_PLAN_HAS_CHANGES'], 'true'))
       displayName: Wait for external validation 
       dependsOn: TerraformContinuousIntegrationJob
       pool: server    
@@ -124,7 +126,6 @@ stages:
 
   - stage: Terraform_apply    
     dependsOn: TerraformContinuousIntegration
-    condition: and(succeeded(), eq(variables['TERRAFORM_PLAN_HAS_CHANGES'], 'true'))
     pool:
       vmImage: ubuntu-latest
     jobs:  
@@ -132,7 +133,7 @@ stages:
       steps:
       
       - task: DownloadBuildArtifacts@0
-        displayName: Download tfplan
+        displayName: 'Download tfplan'
         inputs:
           buildType: 'current'
           downloadType: 'specific'
@@ -140,19 +141,19 @@ stages:
           downloadPath: '$(terraformWorkingDirectory)'
   
       - task: CopyFiles@2
-        displayName: Copy tfplan
+        displayName: 'Copy tfplan'
         inputs:
           SourceFolder: '$(terraformWorkingDirectory)/drop'
           Contents: 'tfplan'
           TargetFolder: '$(terraformWorkingDirectory)'
   
-      - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
-        displayName: Install TF
+      - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-installer.TerraformInstaller@0
+        displayName: 'Install Terraform'
         inputs:
           terraformVersion: $(terraformVersion)
 
       - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
-        displayName: $ terraform init
+        displayName: 'Run terraform init'
         env:
           ARM_SUBSCRIPTION_ID: $(arm-subscription-id)
           ARM_CLIENT_ID:       $(arm-client-id)
@@ -169,7 +170,7 @@ stages:
           backendAzureRmKey: 'terraform.state'
 
       - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
-        displayName: $ terraform apply
+        displayName: 'Run terraform apply'
         env:
           ARM_SUBSCRIPTION_ID: $(arm-subscription-id)
           ARM_CLIENT_ID:       $(arm-client-id)
