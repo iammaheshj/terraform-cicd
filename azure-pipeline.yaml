@@ -48,15 +48,16 @@ stages:
       # Step 3: run Terraform init to initialize the workspace
       - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
         displayName: 'Run terraform init'
-        env:
-          ARM_SUBSCRIPTION_ID: $(arm-subscription-id)
-          ARM_CLIENT_ID:       $(arm-client-id)
-          ARM_CLIENT_SECRET:   $(arm-client-secret)
-          ARM_TENANT_ID:       $(arm-tenant-id)
+        #env:
+        #  ARM_SUBSCRIPTION_ID: $(arm-subscription-id)
+        #  ARM_CLIENT_ID:       $(arm-client-id)
+        #  ARM_CLIENT_SECRET:   $(arm-client-secret)
+        #  ARM_TENANT_ID:       $(arm-tenant-id)
         inputs:
           provider: 'azurerm'
           command: 'init'
           workingDirectory: '$(terraformWorkingDirectory)'
+          environmentServiceName: $(serviceConnection)
           backendServiceArm: $(serviceConnection)
           backendAzureRmResourceGroupName: 'terraform-state-test-rg'
           backendAzureRmStorageAccountName: 'odtfstate'
@@ -81,7 +82,7 @@ stages:
           provider: 'azurerm'
           command: plan
           workingDirectory: $(terraformWorkingDirectory)
-          environmentServiceNameAzureRM: $(serviceConnection)
+          environmentServiceName: $(serviceConnection)
           commandOptions: '-out=tfplan -detailed-exitcode'  
           publishPlanResults: 'terraplan'
       
@@ -180,5 +181,5 @@ stages:
           command: 'apply'
           workingDirectory: '$(terraformWorkingDirectory)'
           commandOptions: 'tfplan'
-          environmentServiceNameAzureRM: $(serviceConnection) 
+          environmentServiceName: $(serviceConnection) 
       
