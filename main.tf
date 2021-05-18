@@ -6,12 +6,7 @@ terraform {
       version = "=2.46.0"
     }
   }
-  backend "azurerm" {
-    resource_group_name  = "terraform-state-test-rg"
-    storage_account_name = "odtfstate"
-    container_name       = "tfstate"
-    key                  = "terraform.state"
-  }
+  backend "azurerm" {}
   required_version = ">= 0.13"
 }
 

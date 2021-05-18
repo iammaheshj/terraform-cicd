@@ -14,6 +14,11 @@ variables:
   # Terraform settings
   terraformWorkingDirectory: '$(System.DefaultWorkingDirectory)'
   terraformVersion: '0.15.3'  
+  backendRGName: 'terraform-state-test-rg'
+  backendRGLocation: 'westeurope'
+  backendStorageAccountName: 'odtfstate'
+  backendContainerName: 'tfstate'
+  backendStorageKey: 'terraform.state'
   TERRAFORM_PLAN_HAS_CHANGES: 'false'
 
 stages:
@@ -48,20 +53,17 @@ stages:
       # Step 3: run Terraform init to initialize the workspace
       - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
         displayName: 'Run terraform init'
-        env:
-          ARM_SUBSCRIPTION_ID: $(arm-subscription-id)
-          ARM_CLIENT_ID:       $(arm-client-id)
-          ARM_CLIENT_SECRET:   $(arm-client-secret)
-          ARM_TENANT_ID:       $(arm-tenant-id)
         inputs:
-          provider: 'azurerm'
           command: 'init'
+          backendType: azurerm
+          ensureBackend: true
           workingDirectory: '$(terraformWorkingDirectory)'
           backendServiceArm: $(serviceConnection)
-          backendAzureRmResourceGroupName: 'terraform-state-test-rg'
-          backendAzureRmStorageAccountName: 'odtfstate'
-          backendAzureRmContainerName: 'tfstate'
-          backendAzureRmKey: 'terraform.state'
+          backendAzureRmResourceGroupName: $(backendRGName)
+          backendAzureRmResourceGroupLocation: $(backendRGLocation)
+          backendAzureRmStorageAccountName: $(backendStorageAccountName)
+          backendAzureRmContainerName: $(backendContainerName)
+          backendAzureRmKey: $(backendStorageKey)
       # Step 4: run Terraform validate to validate HCL syntax
       - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
         displayName: 'Run terraform validate'
@@ -72,16 +74,11 @@ stages:
       # Step 5: run Terraform plan to validate HCL syntax
       - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
         displayName: 'Run terraform plan'
-        env:
-          ARM_SUBSCRIPTION_ID: $(arm-subscription-id)
-          ARM_CLIENT_ID:       $(arm-client-id)
-          ARM_CLIENT_SECRET:   $(arm-client-secret)
-          ARM_TENANT_ID:       $(arm-tenant-id)
         inputs:
           provider: 'azurerm'
           command: plan
           workingDirectory: $(terraformWorkingDirectory)
-          environmentServiceNameAzureRM: $(serviceConnection)
+          environmentServiceName: $(serviceConnection)
           commandOptions: '-out=tfplan -detailed-exitcode'  
           publishPlanResults: 'terraplan'
       
@@ -93,12 +90,7 @@ stages:
           # show only the changes
           cat tfplan.json | jq '[.resource_changes[] | {type: .type, name: .change.after.name, actions: .change.actions[]}]' 
           mkdir drop
-          cp tfplan tfplan.json $(terraformWorkingDirectory)/drop/        
-        env:
-          ARM_SUBSCRIPTION_ID: $(arm-subscription-id)
-          ARM_CLIENT_ID:       $(arm-client-id)
-          ARM_CLIENT_SECRET:   $(arm-client-secret)
-          ARM_TENANT_ID:       $(arm-tenant-id)
+          cp tfplan tfplan.json $(terraformWorkingDirectory)/drop/
         condition: and(succeeded(), eq(variables['TERRAFORM_PLAN_HAS_CHANGES'], 'true'))
         displayName: Create tfplan.json
     
@@ -110,9 +102,13 @@ stages:
           ArtifactName: 'drop'
           publishLocation: 'Container'
 
+      - bash: echo "##vso[task.setvariable variable=tfplanhaschanges;isOutput=true]$TERRAFORM_PLAN_HAS_CHANGES"
+        name: planresult
+
     - job: waitForValidationThenApplyJob
       displayName: Wait for external validation 
       dependsOn: TerraformContinuousIntegrationJob
+      condition: and(succeeded(), eq(dependencies.TerraformContinuousIntegrationJob.outputs['planresult.tfplanhaschanges'], 'true'))
       pool: server    
       timeoutInMinutes: 4320 # job times out in 3 days
       steps:   
@@ -121,11 +117,12 @@ stages:
         inputs:
           notifyUsers: |
             mahesh.jadhav@capgemini.com
-          instructions: 'you should validate the Terraform Plan file'
+          instructions: 'You should validate the Terraform Plan file'
           onTimeout: 'resume'
 
   - stage: Terraform_apply    
     dependsOn: TerraformContinuousIntegration
+    condition: and(succeeded(), eq(dependencies.TerraformContinuousIntegration.outputs['TerraformContinuousIntegrationJob.planresult.tfplanhaschanges'], 'true'))
     pool:
       vmImage: ubuntu-latest
     jobs:  
@@ -154,31 +151,24 @@ stages:
 
       - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
         displayName: 'Run terraform init'
-        env:
-          ARM_SUBSCRIPTION_ID: $(arm-subscription-id)
-          ARM_CLIENT_ID:       $(arm-client-id)
-          ARM_CLIENT_SECRET:   $(arm-client-secret)
-          ARM_TENANT_ID:       $(arm-tenant-id)
         inputs:
           command: 'init'
-          workingDirectory: $(terraformWorkingDirectory)
-          azureLocation: $(azureLocation)
-          backendServiceArm: $(serviceConnection) 
-          backendAzureRmResourceGroupName: 'terraform-state-test-rg'
-          backendAzureRmStorageAccountName: 'terraformstatetest'
-          backendAzureRmContainerName: 'tfstate'
-          backendAzureRmKey: 'terraform.state'
+          backendType: azurerm
+          ensureBackend: true
+          workingDirectory: '$(terraformWorkingDirectory)'
+          backendServiceArm: $(serviceConnection)
+          backendAzureRmResourceGroupName: $(backendRGName)
+          backendAzureRmResourceGroupLocation: $(backendRGLocation)
+          backendAzureRmStorageAccountName: $(backendStorageAccountName)
+          backendAzureRmContainerName: $(backendContainerName)
+          backendAzureRmKey: $(backendStorageKey)
 
       - task: charleszipp.azure-pipelines-tasks-terraform.azure-pipelines-tasks-terraform-cli.TerraformCLI@0
         displayName: 'Run terraform apply'
-        env:
-          ARM_SUBSCRIPTION_ID: $(arm-subscription-id)
-          ARM_CLIENT_ID:       $(arm-client-id)
-          ARM_CLIENT_SECRET:   $(arm-client-secret)
-          ARM_TENANT_ID:       $(arm-tenant-id)
         inputs:
+          provider: 'azurerm'
           command: 'apply'
           workingDirectory: '$(terraformWorkingDirectory)'
           commandOptions: 'tfplan'
-          environmentServiceNameAzureRM: $(serviceConnection) 
+          environmentServiceName: $(serviceConnection) 
       
